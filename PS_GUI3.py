@@ -10,6 +10,35 @@ from matplotlib.figure import Figure
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import json
 from datetime import datetime
+import pulp
+import os
+import sys
+
+def setup_pulp_solver():
+    try:
+        # Get the base directory of the executable
+        if getattr(sys, 'frozen', False):
+            # Running as compiled executable
+            base_dir = sys._MEIPASS
+        else:
+            # Running as script
+            base_dir = os.path.dirname(os.path.abspath(__file__))
+            
+        # Set the CBC solver path
+        solver_path = os.path.join(base_dir, "cbc.exe")
+        
+        if os.path.exists(solver_path):
+            pulp.pulpTestAll()
+            solver = pulp.getSolver('CBC', path=solver_path)
+            print(f"Successfully configured CBC solver at: {solver_path}")
+        else:
+            print(f"Warning: CBC solver not found at {solver_path}")
+            
+    except Exception as e:
+        print(f"Error setting up PuLP solver: {str(e)}")
+
+# Call this function at startup
+setup_pulp_solver()
 
 class ModernProductionSchedulerGUI:
     def __init__(self, root):
