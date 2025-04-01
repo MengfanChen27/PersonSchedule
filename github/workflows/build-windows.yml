@@ -2,9 +2,8 @@ name: Build Windows Executable
 
 on:
   push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
+    tags:
+      - 'v*'  # Trigger on version tags
 
 jobs:
   build:
@@ -26,10 +25,13 @@ jobs:
         
     - name: Build with PyInstaller
       run: |
-        pyinstaller --onefile --windowed --hidden-import pulp --hidden-import matplotlib PS_GUI3.py
+        pyinstaller --name "Production Scheduler" --onefile --windowed PS_GUI3.py
         
-    - name: Upload artifacts
-      uses: actions/upload-artifact@v2
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
+      if: startsWith(github.ref, 'refs/tags/')
       with:
-        name: production-scheduler
-        path: dist/*.exe
+        files: |
+          dist/Production Scheduler.exe
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
