@@ -1,4 +1,4 @@
-# Production Scheduler
+# Production Person Scheduler
 
 A production scheduling application for optimizing manufacturing processes.
 
