@@ -24,11 +24,11 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install pyinstaller
-        pip install pulp matplotlib
+        pip install pulp matplotlib pandas numpy math pulp # Added pandas and numpy
         
     - name: Build with PyInstaller
       run: |
-        pyinstaller --name "Production Scheduler" --onefile --windowed PS_GUI3.py
+        pyinstaller --name "Production Scheduler" --onefile --windowed --hidden-import pandas --hidden-import numpy PS_GUI3.py
         
     - name: Create Release
       uses: actions/create-release@v1
@@ -41,7 +41,7 @@ jobs:
         draft: false
         prerelease: false
         body: |
-          Production Scheduler ${{ github.ref_name }}
+          Production Person Scheduler ${{ github.ref_name }}
           
           ### Features
           - Production scheduling optimization
