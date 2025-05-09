@@ -98,8 +98,8 @@ jobs:
         a = Analysis(
             ['PS_GUI3.py'],
             pathex=[],
-            binaries=[],  # Remove from binaries
-            datas=[(solver_binary, '.')],  # Add to datas instead
+            binaries=[(solver_binary, '.')],  # Changed: Include in binaries instead of datas
+            datas=[],
             hiddenimports=['pandas', 'numpy', 'pulp', 'matplotlib', 'dateutil', 'dateutil.zoneinfo'],
             hookspath=[],
             hooksconfig={},
@@ -150,17 +150,56 @@ jobs:
     - name: Verify CBC solver in build
       run: |
         Write-Host "Checking for CBC solver in build..."
-        Write-Host "Contents of dist directory:"
-        Get-ChildItem "dist" -Recurse
         
-        # Check for cbc.exe in the root of the build directory
-        $buildPath = "dist/Production Scheduler/cbc.exe"
-        if (Test-Path $buildPath) {
-            $fileSize = (Get-Item $buildPath).Length
-            Write-Host "CBC solver found in build. Size: $fileSize bytes"
-        } else {
-            Write-Error "CBC solver not found in build"
-            exit 1
+        # First, list only the root directory contents
+        Write-Host "`nContents of dist root directory:"
+        Get-ChildItem "dist" | ForEach-Object {
+            Write-Host $_.FullName
+        }
+        
+        # Then, list the Production Scheduler directory
+        Write-Host "`nContents of Production Scheduler directory:"
+        Get-ChildItem "dist/Production Scheduler" | ForEach-Object {
+            Write-Host $_.FullName
+        }
+        
+        # Check multiple possible locations for cbc.exe
+        $possiblePaths = @(
+            "dist/Production Scheduler/cbc.exe",
+            "dist/Production Scheduler/_internal/cbc.exe",
+            "dist/Production Scheduler/solver/cbc.exe"
+        )
+        
+        $found = $false
+        foreach ($path in $possiblePaths) {
+            Write-Host "`nChecking path: $path"
+            if (Test-Path $path) {
+                $fileSize = (Get-Item $path).Length
+                Write-Host "CBC solver found at: $path"
+                Write-Host "Size: $fileSize bytes"
+                $found = $true
+                break
+            }
+        }
+        
+        if (-not $found) {
+            Write-Host "`nSearching for cbc.exe in all subdirectories..."
+            $cbcFiles = Get-ChildItem -Path "dist" -Recurse -Filter "cbc.exe"
+            if ($cbcFiles) {
+                Write-Host "Found CBC solver in unexpected location(s):"
+                $cbcFiles | ForEach-Object {
+                    Write-Host $_.FullName
+                    Write-Host "Size: $($_.Length) bytes"
+                }
+                
+                # Copy the first found CBC solver to the expected location
+                $targetPath = "dist/Production Scheduler/cbc.exe"
+                Copy-Item -Path $cbcFiles[0].FullName -Destination $targetPath -Force
+                Write-Host "`nCopied CBC solver to: $targetPath"
+            } else {
+                Write-Error "CBC solver not found in any location"
+                exit 1
+            }
         }
         
     - name: Verify dateutil zoneinfo
