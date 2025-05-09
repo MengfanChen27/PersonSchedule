@@ -24,7 +24,7 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install pyinstaller
-        pip install pulp matplotlib pandas numpy
+        pip install pulp matplotlib pandas numpy python-dateutil
         
     - name: Download CBC Solver
       run: |
@@ -100,7 +100,7 @@ jobs:
             pathex=[],
             binaries=[],  # Remove from binaries
             datas=[(solver_binary, '.')],  # Add to datas instead
-            hiddenimports=['pandas', 'numpy', 'pulp', 'matplotlib'],
+            hiddenimports=['pandas', 'numpy', 'pulp', 'matplotlib', 'dateutil', 'dateutil.zoneinfo'],
             hookspath=[],
             hooksconfig={},
             runtime_hooks=[],
@@ -160,6 +160,23 @@ jobs:
             Write-Host "CBC solver found in build. Size: $fileSize bytes"
         } else {
             Write-Error "CBC solver not found in build"
+            exit 1
+        }
+        
+    - name: Verify dateutil zoneinfo
+      run: |
+        Write-Host "Checking dateutil zoneinfo..."
+        $zoneinfoPath = "dist/Production Scheduler/_internal/dateutil/zoneinfo"
+        if (Test-Path "$zoneinfoPath/dateutil-zoneinfo.tar.gz") {
+            $fileInfo = Get-Item "$zoneinfoPath/dateutil-zoneinfo.tar.gz"
+            Write-Host "Zoneinfo file found. Size: $($fileInfo.Length) bytes"
+            Write-Host "Last write time: $($fileInfo.LastWriteTime)"
+            
+            # Reset the timestamp to current time to avoid future dates
+            $fileInfo.LastWriteTime = Get-Date
+            Write-Host "Updated timestamp to: $($fileInfo.LastWriteTime)"
+        } else {
+            Write-Error "Dateutil zoneinfo file not found"
             exit 1
         }
         
