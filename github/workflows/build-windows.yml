@@ -3,17 +3,20 @@ name: Build Windows Executable
 on:
   push:
     tags:
-      - 'v*'  # Trigger on version tags
+      - 'v*'
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: windows-latest
+    permissions:
+      contents: write
     
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
     
     - name: Set up Python
-      uses: actions/setup-python@v2
+      uses: actions/setup-python@v4
       with:
         python-version: '3.9'
         
@@ -21,17 +24,99 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install pyinstaller
-        pip install pulp matplotlib
+        pip install pulp matplotlib pandas numpy
+        
+    - name: Locate PuLP CBC
+      run: |
+        python -c "import pulp; import os; print('CBC Path:', pulp.getSolverPath('CBC'))"
         
     - name: Build with PyInstaller
       run: |
-        pyinstaller --name "Production Scheduler" --onefile --windowed PS_GUI3.py
+        # Get the CBC solver path
+        $CBC_PATH = python -c "import pulp; import os; print(pulp.getSolverPath('CBC'))"
+        
+        # Create a spec file
+        @"
+        # -*- mode: python ; coding: utf-8 -*-
+
+        block_cipher = None
+
+        a = Analysis(
+            ['PS_GUI3.py'],
+            pathex=[],
+            binaries=[('$CBC_PATH', '.')],
+            datas=[],
+            hiddenimports=['pandas', 'numpy', 'pulp'],
+            hookspath=[],
+            hooksconfig={},
+            runtime_hooks=[],
+            excludes=[],
+            win_no_prefer_redirects=False,
+            win_private_assemblies=False,
+            cipher=block_cipher,
+            noarchive=False,
+        )
+
+        pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
+
+        exe = EXE(
+            pyz,
+            a.scripts,
+            a.binaries,
+            a.zipfiles,
+            a.datas,
+            [],
+            name='Production Scheduler',
+            debug=False,
+            bootloader_ignore_signals=False,
+            strip=False,
+            upx=True,
+            upx_exclude=[],
+            runtime_tmpdir=None,
+            console=False,
+            disable_windowed_traceback=False,
+            target_arch=None,
+            codesign_identity=None,
+            entitlements_file=None,
+        )
+        "@ | Out-File -Encoding UTF8 Production_Scheduler.spec
+        
+        # Build using the spec file
+        pyinstaller Production_Scheduler.spec
         
     - name: Create Release
-      uses: softprops/action-gh-release@v1
-      if: startsWith(github.ref, 'refs/tags/')
-      with:
-        files: |
-          dist/Production Scheduler.exe
+      uses: actions/create-release@v1
+      id: create_release
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ github.ref_name }}
+        release_name: Production Scheduler ${{ github.ref_name }}
+        draft: false
+        prerelease: false
+        body: |
+          Production Person Scheduler ${{ github.ref_name }}
+          
+          ### Features
+          - Production scheduling optimization
+          - Multiple machine support
+          - Staff allocation
+          - Shift planning
+          
+          ### Installation
+          1. Download the executable
+          2. Run it directly - no installation needed
+          
+          ### Changes
+          - Fixed PuLP solver integration
+          - Improved stability and performance
+    
+    - name: Upload Release Asset
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./dist/Production Scheduler.exe
+        asset_name: Production_Scheduler.exe
+        asset_content_type: application/octet-stream
