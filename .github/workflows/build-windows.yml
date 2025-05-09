@@ -24,7 +24,7 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install pyinstaller
-        pip install pulp matplotlib pandas numpy
+        pip install pulp matplotlib pandas numpy python-dateutil
         
     - name: Download CBC Solver
       run: |
@@ -81,20 +81,26 @@ jobs:
       run: |
         @"
         # -*- mode: python ; coding: utf-8 -*-
+        import os
 
         block_cipher = None
 
-        # Add CBC solver as a binary
-        binaries = [
-            ('solver/cbc.exe', 'solver')
-        ]
+        # Get the absolute path to the solver directory
+        solver_dir = os.path.abspath(os.path.join(SPECPATH, 'solver'))
+        solver_binary = os.path.join(solver_dir, 'cbc.exe')
+
+        print(f"Solver directory: {solver_dir}")
+        print(f"Solver binary path: {solver_binary}")
+
+        if not os.path.exists(solver_binary):
+            raise Exception(f"CBC solver not found at {solver_binary}")
 
         a = Analysis(
             ['PS_GUI3.py'],
             pathex=[],
-            binaries=binaries,
-            datas=[],
-            hiddenimports=['pandas', 'numpy', 'pulp', 'matplotlib'],
+            binaries=[],
+            datas=[(solver_binary, 'solver')],  # Changed: Place in solver directory
+            hiddenimports=['pandas', 'numpy', 'pulp', 'matplotlib', 'dateutil', 'dateutil.zoneinfo'],
             hookspath=[],
             hooksconfig={},
             runtime_hooks=[],
@@ -110,22 +116,30 @@ jobs:
         exe = EXE(
             pyz,
             a.scripts,
-            a.binaries,
-            a.zipfiles,
-            a.datas,
             [],
+            exclude_binaries=True,
             name='Production Scheduler',
             debug=False,
             bootloader_ignore_signals=False,
             strip=False,
             upx=True,
-            upx_exclude=[],
-            runtime_tmpdir=None,
             console=True,
             disable_windowed_traceback=False,
             target_arch=None,
             codesign_identity=None,
             entitlements_file=None,
+        )
+
+        # This creates the directory with all binaries
+        coll = COLLECT(
+            exe,
+            a.binaries,
+            a.zipfiles,
+            a.datas,
+            strip=False,
+            upx=True,
+            upx_exclude=[],
+            name='Production Scheduler'
         )
         "@ | Out-File -Encoding UTF8 Production_Scheduler.spec
         
@@ -135,22 +149,81 @@ jobs:
         
     - name: Verify CBC solver in build
       run: |
-        $buildPath = "dist/Production Scheduler/solver/cbc.exe"
-        Write-Host "Checking for CBC solver at: $buildPath"
+        Write-Host "Checking for CBC solver in build..."
         
-        if (Test-Path $buildPath) {
-            $fileSize = (Get-Item $buildPath).Length
-            Write-Host "CBC solver found in build. Size: $fileSize bytes"
+        # First, list only the root directory contents
+        Write-Host "`nContents of dist root directory:"
+        Get-ChildItem "dist" | ForEach-Object {
+            Write-Host $_.FullName
+        }
+        
+        # Then, list the Production Scheduler directory
+        Write-Host "`nContents of Production Scheduler directory:"
+        Get-ChildItem "dist/Production Scheduler" | ForEach-Object {
+            Write-Host $_.FullName
+        }
+        
+        # Check multiple possible locations for cbc.exe
+        $possiblePaths = @(
+            "dist/Production Scheduler/cbc.exe",
+            "dist/Production Scheduler/_internal/cbc.exe",
+            "dist/Production Scheduler/solver/cbc.exe"
+        )
+        
+        $found = $false
+        foreach ($path in $possiblePaths) {
+            Write-Host "`nChecking path: $path"
+            if (Test-Path $path) {
+                $fileSize = (Get-Item $path).Length
+                Write-Host "CBC solver found at: $path"
+                Write-Host "Size: $fileSize bytes"
+                $found = $true
+                break
+            }
+        }
+        
+        if (-not $found) {
+            Write-Host "`nSearching for cbc.exe in all subdirectories..."
+            $cbcFiles = Get-ChildItem -Path "dist" -Recurse -Filter "cbc.exe"
+            if ($cbcFiles) {
+                Write-Host "Found CBC solver in unexpected location(s):"
+                $cbcFiles | ForEach-Object {
+                    Write-Host $_.FullName
+                    Write-Host "Size: $($_.Length) bytes"
+                }
+                
+                # Copy the first found CBC solver to the expected location
+                $targetPath = "dist/Production Scheduler/cbc.exe"
+                Copy-Item -Path $cbcFiles[0].FullName -Destination $targetPath -Force
+                Write-Host "`nCopied CBC solver to: $targetPath"
+            } else {
+                Write-Error "CBC solver not found in any location"
+                exit 1
+            }
+        }
+        
+    - name: Verify dateutil zoneinfo
+      run: |
+        Write-Host "Checking dateutil zoneinfo..."
+        $zoneinfoPath = "dist/Production Scheduler/_internal/dateutil/zoneinfo"
+        if (Test-Path "$zoneinfoPath/dateutil-zoneinfo.tar.gz") {
+            $fileInfo = Get-Item "$zoneinfoPath/dateutil-zoneinfo.tar.gz"
+            Write-Host "Zoneinfo file found. Size: $($fileInfo.Length) bytes"
+            Write-Host "Last write time: $($fileInfo.LastWriteTime)"
             
-            # List contents of the solver directory
-            Write-Host "Contents of solver directory in build:"
-            Get-ChildItem "dist/Production Scheduler/solver"
+            # Reset the timestamp to current time to avoid future dates
+            $fileInfo.LastWriteTime = Get-Date
+            Write-Host "Updated timestamp to: $($fileInfo.LastWriteTime)"
         } else {
-            Write-Host "Contents of dist directory:"
-            Get-ChildItem "dist" -Recurse
-            Write-Error "CBC solver not found in build"
+            Write-Error "Dateutil zoneinfo file not found"
             exit 1
         }
+        
+    - name: Get timestamp for tag
+      id: timestamp
+      run: |
+        $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
+        echo "::set-output name=value::$timestamp"
         
     - name: Create Release
       uses: actions/create-release@v1
@@ -158,12 +231,16 @@ jobs:
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
-        tag_name: ${{ github.ref_name }}
-        release_name: Production Scheduler ${{ github.ref_name }}
+        tag_name: ${{ github.ref_name }}_${{ steps.timestamp.outputs.value }}
+        release_name: Production Scheduler ${{ github.ref_name }} (Build ${{ steps.timestamp.outputs.value }})
         draft: false
         prerelease: false
         body: |
           Production Person Scheduler ${{ github.ref_name }}
+          
+          ### Build Information
+          - Build Time: ${{ steps.timestamp.outputs.value }}
+          - Version: ${{ github.ref_name }}
           
           ### Features
           - Production scheduling optimization
@@ -172,14 +249,19 @@ jobs:
           - Shift planning
           
           ### Installation
-          1. Download the executable
-          2. Run it directly - no installation needed
+          1. Download and extract the zip file
+          2. Run "Production Scheduler.exe" from the extracted folder
           
           ### Changes
           - Fixed PuLP solver integration
           - Improved stability and performance
           - Added console window for troubleshooting
           - Direct CBC solver download from COIN-OR
+          - Modified solver bundling location
+    
+    - name: Create ZIP archive
+      run: |
+        Compress-Archive -Path "dist/Production Scheduler" -DestinationPath "Production_Scheduler_${{ steps.timestamp.outputs.value }}.zip"
     
     - name: Upload Release Asset
       uses: actions/upload-release-asset@v1
@@ -187,6 +269,6 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: ./dist/Production Scheduler.exe
-        asset_name: Production_Scheduler.exe
-        asset_content_type: application/octet-stream
+        asset_path: ./Production_Scheduler_${{ steps.timestamp.outputs.value }}.zip
+        asset_name: Production_Scheduler_${{ steps.timestamp.outputs.value }}.zip
+        asset_content_type: application/zip

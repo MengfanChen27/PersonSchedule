@@ -24,50 +24,83 @@ def setup_pulp_solver():
             # Running as script
             base_dir = os.path.dirname(os.path.abspath(__file__))
         
-        # Define the solver path - we know exactly where it should be
-        solver_path = os.path.join(base_dir, "solver", "cbc.exe")
+        # Define possible solver paths - check multiple locations
+        possible_solver_paths = [
+            os.path.join(base_dir, "solver", "cbc.exe"),  # Check in solver subdirectory
+            os.path.join(base_dir, "cbc.exe"),  # Check in root directory
+            os.path.join(os.path.dirname(base_dir), "solver", "cbc.exe"),  # Check one level up
+            os.path.join(base_dir, "_internal", "solver", "cbc.exe")  # Check in _internal
+        ]
         
-        print(f"Looking for CBC solver at: {solver_path}")
+        solver_found = False
+        for solver_path in possible_solver_paths:
+            print(f"Looking for CBC solver at: {solver_path}")
+            if os.path.exists(solver_path):
+                print(f"Found CBC solver at: {solver_path}")
+                try:
+                    # Try to verify the solver is executable
+                    if os.access(solver_path, os.X_OK):
+                        print("CBC solver is executable")
+                    else:
+                        print("Warning: CBC solver exists but may not be executable")
+                    
+                    # Configure PuLP to use the found CBC solver
+                    solver = pulp.PULP_CBC_CMD(path=solver_path, msg=True)
+                    # Test the solver
+                    test_prob = pulp.LpProblem("test", pulp.LpMinimize)
+                    x = pulp.LpVariable("x", 0, 1)
+                    test_prob += x
+                    status = test_prob.solve(solver)
+                    if status == 1:
+                        print("CBC solver test successful")
+                        pulp.LpSolverDefault = solver
+                        solver_found = True
+                        break
+                    else:
+                        print(f"CBC solver test failed with status: {status}")
+                except Exception as e:
+                    print(f"Error configuring solver at {solver_path}: {str(e)}")
+                    continue
         
-        if os.path.exists(solver_path):
-            print(f"Found CBC solver at: {solver_path}")
-            try:
-                # Try to verify the solver is executable
-                if os.access(solver_path, os.X_OK):
-                    print("CBC solver is executable")
-                else:
-                    print("Warning: CBC solver exists but may not be executable")
-                
-                # Configure PuLP to use the found CBC solver
-                solver = pulp.PULP_CBC_CMD(path=solver_path, msg=True)
-                # Test the solver
-                test_prob = pulp.LpProblem("test", pulp.LpMinimize)
-                x = pulp.LpVariable("x", 0, 1)
-                test_prob += x
-                status = test_prob.solve(solver)
-                if status == 1:
-                    print("CBC solver test successful")
-                    pulp.LpSolverDefault = solver
-                else:
-                    print(f"CBC solver test failed with status: {status}")
-                    raise Exception("Solver test failed")
-            except Exception as e:
-                print(f"Error configuring solver: {str(e)}")
-                raise
-        else:
-            print(f"CBC solver not found at: {solver_path}")
+        if not solver_found:
+            print("CBC solver not found in any of the expected locations")
             print("Current directory contents:")
-            print(os.listdir(base_dir))
-            if os.path.exists(os.path.join(base_dir, "solver")):
-                print("Solver directory contents:")
-                print(os.listdir(os.path.join(base_dir, "solver")))
-            raise FileNotFoundError(f"CBC solver not found at {solver_path}")
+            try:
+                print(os.listdir(base_dir))
+                if os.path.exists(os.path.join(base_dir, "solver")):
+                    print("Solver directory contents:")
+                    print(os.listdir(os.path.join(base_dir, "solver")))
+            except Exception as e:
+                print(f"Error listing directory contents: {str(e)}")
+            raise FileNotFoundError("CBC solver not found in any location")
             
     except Exception as e:
         print(f"Error setting up PuLP solver: {str(e)}")
         print("Attempting to use system solver as fallback...")
         try:
-            pulp.pulpTestAll()
+            # Try to use any available solver
+            available_solvers = []
+            unavailable_solvers = set()
+            
+            for solver_name in pulp.listSolvers(onlyAvailable=False):
+                try:
+                    if pulp.getSolver(solver_name).available():
+                        available_solvers.append(solver_name)
+                    else:
+                        unavailable_solvers.add(solver_name)
+                except:
+                    unavailable_solvers.add(solver_name)
+            
+            print(f"Available solvers: {available_solvers}")
+            print(f"Unavailable solvers: {unavailable_solvers}")
+            
+            if available_solvers:
+                # Try to use the first available solver
+                solver = pulp.getSolver(available_solvers[0])
+                print(f"Using alternative solver: {available_solvers[0]}")
+                pulp.LpSolverDefault = solver
+            else:
+                raise Exception("No working solvers found")
         except Exception as e2:
             print(f"Failed to use system solver: {str(e2)}")
             raise Exception("No working solver found") from e
