@@ -99,8 +99,14 @@ jobs:
             ['PS_GUI3.py'],
             pathex=[],
             binaries=[],
-            datas=[(solver_binary, 'solver')],  # Changed: Place in solver directory
-            hiddenimports=['pandas', 'numpy', 'pulp', 'matplotlib', 'dateutil', 'dateutil.zoneinfo'],
+            datas=[
+                (solver_binary, 'solver'),  # Place CBC solver in solver directory
+                (os.path.dirname(solver_binary), 'solver'),  # Include entire solver directory
+            ],
+            hiddenimports=[
+                'pandas', 'numpy', 'pulp', 'matplotlib', 'dateutil', 'dateutil.zoneinfo',
+                'pulp.apis', 'pulp.apis.coin_api'  # Add PuLP solver-related imports
+            ],
             hookspath=[],
             hooksconfig={},
             runtime_hooks=[],
