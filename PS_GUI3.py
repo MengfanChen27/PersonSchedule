@@ -14,7 +14,7 @@ import pulp
 import os
 import sys
 
-def setup_pulp_solver():
+ddef setup_pulp_solver():
     try:
         # Get the base directory of the executable
         if getattr(sys, 'frozen', False):
