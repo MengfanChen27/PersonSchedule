@@ -24,17 +24,27 @@ def setup_pulp_solver():
             # Running as script
             base_dir = os.path.dirname(os.path.abspath(__file__))
             
-        # Try to find cbc.exe in the current directory
-        solver_path = os.path.join(base_dir, "cbc.exe")
+        # Define possible solver paths
+        solver_paths = [
+            os.path.join(base_dir, "cbc.exe"),  # Direct in base dir
+            os.path.join(base_dir, "solver", "cbc.exe"),  # In solver subdirectory
+            os.path.join(base_dir, "pulp", "solverdir", "cbc", "win", "64", "cbc.exe")  # In PuLP structure
+        ]
         
-        if os.path.exists(solver_path):
-            # Configure PuLP to use the local CBC solver
-            pulp.pulpTestAll()
-            solver = pulp.getSolver('CBC', path=solver_path)
-            print(f"Successfully configured CBC solver at: {solver_path}")
-        else:
-            # If not found, try to use the default solver
-            print("Local CBC solver not found, using default solver")
+        # Try each possible path
+        solver_found = False
+        for solver_path in solver_paths:
+            if os.path.exists(solver_path):
+                print(f"Found CBC solver at: {solver_path}")
+                # Configure PuLP to use the found CBC solver
+                solver = pulp.PULP_CBC_CMD(path=solver_path, msg=False)
+                pulp.LpSolverDefault = solver
+                solver_found = True
+                break
+        
+        if not solver_found:
+            print("Warning: CBC solver not found in expected locations. Attempting to use system solver.")
+            # Try to use default solver configuration
             pulp.pulpTestAll()
             
     except Exception as e:
