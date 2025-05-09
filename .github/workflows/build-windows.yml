@@ -98,8 +98,8 @@ jobs:
         a = Analysis(
             ['PS_GUI3.py'],
             pathex=[],
-            binaries=[(solver_binary, '.')],  # Bundle in root directory
-            datas=[],
+            binaries=[],  # Remove from binaries
+            datas=[(solver_binary, '.')],  # Add to datas instead
             hiddenimports=['pandas', 'numpy', 'pulp', 'matplotlib'],
             hookspath=[],
             hooksconfig={},
@@ -116,8 +116,8 @@ jobs:
         exe = EXE(
             pyz,
             a.scripts,
-            [],  # Remove a.binaries, a.zipfiles, a.datas from here
-            exclude_binaries=True,  # This is key for directory-based build
+            [],
+            exclude_binaries=True,
             name='Production Scheduler',
             debug=False,
             bootloader_ignore_signals=False,
