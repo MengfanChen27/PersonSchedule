@@ -35,17 +35,25 @@ jobs:
             Write-Host "Solver directory already exists"
         }
         
-        # Download CBC solver directly from COIN-OR releases
+        # Get CBC solver from installed PuLP package
         try {
-            Write-Host "Downloading CBC solver..."
-            Invoke-WebRequest -Uri "https://raw.githubusercontent.com/coin-or/pulp/master/pulp/solverdir/cbc/win/64/cbc.exe" -OutFile "solver/cbc.exe"
-            if (Test-Path "solver/cbc.exe") {
-                Write-Host "CBC solver downloaded successfully"
+            Write-Host "Locating CBC solver from PuLP installation..."
+            $PulpPath = python -c "import pulp, os; print(os.path.join(os.path.dirname(pulp.__file__), 'solverdir', 'cbc', 'win', '64', 'cbc.exe'))"
+            Write-Host "Found CBC solver at: $PulpPath"
+            
+            if (Test-Path $PulpPath) {
+                Write-Host "Copying CBC solver to solver directory..."
+                Copy-Item -Path $PulpPath -Destination "solver/cbc.exe" -Force
+                if (Test-Path "solver/cbc.exe") {
+                    Write-Host "CBC solver copied successfully"
+                } else {
+                    throw "CBC solver file not found after copy"
+                }
             } else {
-                throw "CBC solver file not found after download"
+                throw "CBC solver not found in PuLP installation"
             }
         } catch {
-            Write-Error "Failed to download CBC solver: $_"
+            Write-Error "Failed to setup CBC solver: $_"
             exit 1
         }
         
@@ -141,7 +149,7 @@ jobs:
           - Fixed PuLP solver integration
           - Improved stability and performance
           - Added console window for troubleshooting
-          - Direct CBC solver bundling
+          - Direct CBC solver bundling from PuLP installation
     
     - name: Upload Release Asset
       uses: actions/upload-release-asset@v1
