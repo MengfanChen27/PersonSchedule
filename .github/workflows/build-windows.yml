@@ -31,57 +31,46 @@ jobs:
         # Create solver directory if it doesn't exist
         if (-not (Test-Path "solver")) {
             New-Item -ItemType Directory -Path "solver" -Force
-        } else {
-            Write-Host "Solver directory already exists"
         }
+        Write-Host "Solver directory created/verified"
         
-        # Get CBC solver from installed PuLP package
+        # Download CBC solver directly from COIN-OR
         try {
-            Write-Host "Locating CBC solver from PuLP installation..."
+            Write-Host "Downloading CBC solver from COIN-OR..."
             
-            # Get PuLP installation directory and CBC path using Python
-            $PulpInfo = python -c "import pulp, os; print(os.path.dirname(pulp.__file__)); print(os.path.join(os.path.dirname(pulp.__file__), 'solverdir', 'cbc', 'win', '64', 'cbc.exe'))"
-            $PulpInfo = $PulpInfo -split "`n"
-            $PulpDir = $PulpInfo[0]
-            $PulpPath = $PulpInfo[1]
+            # Download CBC binary
+            $url = "https://github.com/coin-or/Cbc/releases/download/releases%2F2.10.10/Cbc-releases.2.10.10-w64-msvc17-md.zip"
+            $output = "cbc.zip"
             
-            Write-Host "PuLP directory: $PulpDir"
-            Write-Host "Expected CBC path: $PulpPath"
+            Write-Host "Downloading from: $url"
+            Invoke-WebRequest -Uri $url -OutFile $output
             
-            # List contents of PuLP directory
-            Write-Host "Contents of PuLP directory:"
-            Get-ChildItem -Path $PulpDir -Recurse | Where-Object { $_.Name -eq 'cbc.exe' } | ForEach-Object {
-                Write-Host "Found CBC at: $($_.FullName)"
-            }
-            
-            # Try to find CBC executable
-            $CbcExe = Get-ChildItem -Path $PulpDir -Recurse | Where-Object { $_.Name -eq 'cbc.exe' } | Select-Object -First 1
-            
-            if ($CbcExe) {
-                Write-Host "Found CBC executable at: $($CbcExe.FullName)"
-                Write-Host "Copying CBC solver to solver directory..."
-                Copy-Item -Path $CbcExe.FullName -Destination "solver/cbc.exe" -Force
+            if (Test-Path $output) {
+                Write-Host "Download successful. Extracting..."
+                Expand-Archive -Path $output -DestinationPath "cbctemp" -Force
                 
-                if (Test-Path "solver/cbc.exe") {
-                    Write-Host "CBC solver copied successfully"
-                    # Verify file size
-                    $fileSize = (Get-Item "solver/cbc.exe").Length
-                    Write-Host "CBC solver size: $fileSize bytes"
-                    if ($fileSize -eq 0) {
-                        throw "CBC solver file is empty"
+                # Find cbc.exe in the extracted files
+                $cbcExe = Get-ChildItem -Path "cbctemp" -Recurse | Where-Object { $_.Name -eq 'cbc.exe' } | Select-Object -First 1
+                
+                if ($cbcExe) {
+                    Write-Host "Found CBC executable at: $($cbcExe.FullName)"
+                    Copy-Item -Path $cbcExe.FullName -Destination "solver/cbc.exe" -Force
+                    
+                    if (Test-Path "solver/cbc.exe") {
+                        $fileSize = (Get-Item "solver/cbc.exe").Length
+                        Write-Host "CBC solver copied successfully. Size: $fileSize bytes"
+                    } else {
+                        throw "Failed to copy CBC solver"
                     }
                 } else {
-                    throw "CBC solver file not found after copy"
+                    throw "Could not find cbc.exe in extracted files"
                 }
+                
+                # Clean up temporary files
+                Remove-Item -Path $output -Force
+                Remove-Item -Path "cbctemp" -Recurse -Force
             } else {
-                Write-Host "Contents of expected CBC directory:"
-                $expectedCbcDir = Join-Path $PulpDir "solverdir\cbc\win\64"
-                if (Test-Path $expectedCbcDir) {
-                    Get-ChildItem -Path $expectedCbcDir
-                } else {
-                    Write-Host "Expected CBC directory does not exist"
-                }
-                throw "CBC solver not found in PuLP installation"
+                throw "Download failed"
             }
         } catch {
             Write-Error "Failed to setup CBC solver: $_"
@@ -146,11 +135,19 @@ jobs:
         
     - name: Verify CBC solver in build
       run: |
-        if (Test-Path "dist/Production Scheduler/solver/cbc.exe") {
-            Write-Host "CBC solver found in build"
-            $fileSize = (Get-Item "dist/Production Scheduler/solver/cbc.exe").Length
-            Write-Host "CBC solver size in build: $fileSize bytes"
+        $buildPath = "dist/Production Scheduler/solver/cbc.exe"
+        Write-Host "Checking for CBC solver at: $buildPath"
+        
+        if (Test-Path $buildPath) {
+            $fileSize = (Get-Item $buildPath).Length
+            Write-Host "CBC solver found in build. Size: $fileSize bytes"
+            
+            # List contents of the solver directory
+            Write-Host "Contents of solver directory in build:"
+            Get-ChildItem "dist/Production Scheduler/solver"
         } else {
+            Write-Host "Contents of dist directory:"
+            Get-ChildItem "dist" -Recurse
             Write-Error "CBC solver not found in build"
             exit 1
         }
@@ -182,7 +179,7 @@ jobs:
           - Fixed PuLP solver integration
           - Improved stability and performance
           - Added console window for troubleshooting
-          - Enhanced CBC solver detection and verification
+          - Direct CBC solver download from COIN-OR
     
     - name: Upload Release Asset
       uses: actions/upload-release-asset@v1
