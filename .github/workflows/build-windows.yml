@@ -28,10 +28,26 @@ jobs:
         
     - name: Download CBC Solver
       run: |
-        # Create solver directory
-        mkdir -p solver
+        # Create solver directory if it doesn't exist
+        if (-not (Test-Path "solver")) {
+            New-Item -ItemType Directory -Path "solver" -Force
+        } else {
+            Write-Host "Solver directory already exists"
+        }
+        
         # Download CBC solver directly from COIN-OR releases
-        Invoke-WebRequest -Uri "https://raw.githubusercontent.com/coin-or/pulp/master/pulp/solverdir/cbc/win/64/cbc.exe" -OutFile "solver/cbc.exe"
+        try {
+            Write-Host "Downloading CBC solver..."
+            Invoke-WebRequest -Uri "https://raw.githubusercontent.com/coin-or/pulp/master/pulp/solverdir/cbc/win/64/cbc.exe" -OutFile "solver/cbc.exe"
+            if (Test-Path "solver/cbc.exe") {
+                Write-Host "CBC solver downloaded successfully"
+            } else {
+                throw "CBC solver file not found after download"
+            }
+        } catch {
+            Write-Error "Failed to download CBC solver: $_"
+            exit 1
+        }
         
     - name: Create PyInstaller spec file
       run: |
