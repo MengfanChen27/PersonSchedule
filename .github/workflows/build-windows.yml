@@ -98,7 +98,7 @@ jobs:
         a = Analysis(
             ['PS_GUI3.py'],
             pathex=[],
-            binaries=[(solver_binary, '.')],  # Changed to bundle in root directory
+            binaries=[(solver_binary, '.')],  # Bundle in root directory
             datas=[],
             hiddenimports=['pandas', 'numpy', 'pulp', 'matplotlib'],
             hookspath=[],
@@ -116,22 +116,30 @@ jobs:
         exe = EXE(
             pyz,
             a.scripts,
-            a.binaries,
-            a.zipfiles,
-            a.datas,
-            [],
+            [],  # Remove a.binaries, a.zipfiles, a.datas from here
+            exclude_binaries=True,  # This is key for directory-based build
             name='Production Scheduler',
             debug=False,
             bootloader_ignore_signals=False,
             strip=False,
             upx=True,
-            upx_exclude=[],
-            runtime_tmpdir=None,
             console=True,
             disable_windowed_traceback=False,
             target_arch=None,
             codesign_identity=None,
             entitlements_file=None,
+        )
+
+        # This creates the directory with all binaries
+        coll = COLLECT(
+            exe,
+            a.binaries,
+            a.zipfiles,
+            a.datas,
+            strip=False,
+            upx=True,
+            upx_exclude=[],
+            name='Production Scheduler'
         )
         "@ | Out-File -Encoding UTF8 Production_Scheduler.spec
         
@@ -145,7 +153,7 @@ jobs:
         Write-Host "Contents of dist directory:"
         Get-ChildItem "dist" -Recurse
         
-        # Check for cbc.exe in the root of the build
+        # Check for cbc.exe in the root of the build directory
         $buildPath = "dist/Production Scheduler/cbc.exe"
         if (Test-Path $buildPath) {
             $fileSize = (Get-Item $buildPath).Length
@@ -175,8 +183,8 @@ jobs:
           - Shift planning
           
           ### Installation
-          1. Download the executable
-          2. Run it directly - no installation needed
+          1. Download and extract the zip file
+          2. Run "Production Scheduler.exe" from the extracted folder
           
           ### Changes
           - Fixed PuLP solver integration
@@ -185,12 +193,16 @@ jobs:
           - Direct CBC solver download from COIN-OR
           - Modified solver bundling location
     
+    - name: Create ZIP archive
+      run: |
+        Compress-Archive -Path "dist/Production Scheduler" -DestinationPath "Production_Scheduler.zip"
+    
     - name: Upload Release Asset
       uses: actions/upload-release-asset@v1
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: ./dist/Production Scheduler.exe
-        asset_name: Production_Scheduler.exe
-        asset_content_type: application/octet-stream
+        asset_path: ./Production_Scheduler.zip
+        asset_name: Production_Scheduler.zip
+        asset_content_type: application/zip
