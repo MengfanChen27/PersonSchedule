@@ -26,11 +26,12 @@ jobs:
         pip install pyinstaller
         pip install pulp matplotlib pandas numpy
         
-    - name: Create solver directory and copy CBC
+    - name: Download CBC Solver
       run: |
+        # Create solver directory
         mkdir -p solver
-        $PulpPath = python -c "import pulp, os; print(os.path.join(os.path.dirname(pulp.__file__), 'solverdir', 'cbc', 'win', '64', 'cbc.exe'))"
-        Copy-Item -Path $PulpPath -Destination solver/cbc.exe
+        # Download CBC solver directly from COIN-OR releases
+        Invoke-WebRequest -Uri "https://raw.githubusercontent.com/coin-or/pulp/master/pulp/solverdir/cbc/win/64/cbc.exe" -OutFile "solver/cbc.exe"
         
     - name: Create PyInstaller spec file
       run: |
@@ -39,12 +40,17 @@ jobs:
 
         block_cipher = None
 
+        # Add CBC solver as a binary
+        binaries = [
+            ('solver/cbc.exe', 'solver')
+        ]
+
         a = Analysis(
             ['PS_GUI3.py'],
             pathex=[],
-            binaries=[('solver/cbc.exe', 'solver')],
+            binaries=binaries,
             datas=[],
-            hiddenimports=['pandas', 'numpy', 'pulp'],
+            hiddenimports=['pandas', 'numpy', 'pulp', 'matplotlib'],
             hookspath=[],
             hooksconfig={},
             runtime_hooks=[],
@@ -83,6 +89,15 @@ jobs:
       run: |
         pyinstaller Production_Scheduler.spec
         
+    - name: Verify CBC solver in build
+      run: |
+        if (Test-Path "dist/Production Scheduler/solver/cbc.exe") {
+            Write-Host "CBC solver found in build"
+        } else {
+            Write-Error "CBC solver not found in build"
+            exit 1
+        }
+        
     - name: Create Release
       uses: actions/create-release@v1
       id: create_release
@@ -110,6 +125,7 @@ jobs:
           - Fixed PuLP solver integration
           - Improved stability and performance
           - Added console window for troubleshooting
+          - Direct CBC solver bundling
     
     - name: Upload Release Asset
       uses: actions/upload-release-asset@v1
