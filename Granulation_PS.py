@@ -1,5 +1,6 @@
 import math
 import pulp
+from PS_GUI3 import SOLVER_INSTANCE  # Import the global solver instance
 
 def optimize_granulation(
     batches_required: int,
@@ -11,7 +12,8 @@ def optimize_granulation(
     w_night: float = 2.0,
     w_weekend: float = 3.0,
     w_daysUsed: float = 1.0,
-    print_solution: bool = True
+    print_solution: bool = True,
+    solver=None  # Add solver parameter with default None
 ):
     """
       Granulation Scheduling (3 sub-processes in parallel: Mill, RC, and Final Mix)
@@ -37,8 +39,12 @@ def optimize_granulation(
     :param w_weekend: penalty for each shift run on a weekend day
     :param w_daysUsed: penalty for each day that is used
     :param print_solution: whether to print out the results
+    :param solver: Optional solver instance to use. If None, uses the global solver instance.
     :return: dict with solution details or None if infeasible
     """
+
+    # Use provided solver or fall back to global instance
+    solver_to_use = solver if solver is not None else SOLVER_INSTANCE
 
     # ------------------------------------------------
     # Quick feasibility check: 9 batches max per day
@@ -129,7 +135,7 @@ def optimize_granulation(
     # ------------------------------------------------
     # 6. SOLVE THE MODEL
     # ------------------------------------------------
-    result_status = model.solve(pulp.PULP_CBC_CMD(msg=0))
+    result_status = model.solve(solver_to_use)
     solver_status = pulp.LpStatus[model.status]
 
     if solver_status != 'Optimal':
