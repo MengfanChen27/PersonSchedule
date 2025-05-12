@@ -1,6 +1,6 @@
 import math
 import pulp
-from PS_GUI3 import SOLVER_INSTANCE  # Import the global solver instance
+from PS_GUI3 import solver
 
 def optimize_dispensing(
     batches_required: int,
@@ -13,8 +13,7 @@ def optimize_dispensing(
     w_daysUsed: float = 1.0,
     w_morning: float = 0.0,   # penalty for morning shift usage
     w_evening: float = 0.1,   # penalty for evening shift usage
-    print_solution: bool = True,
-    solver=None  # Add solver parameter with default None
+    print_solution: bool = True
 ):
     """
       - 3 shifts/day (morning M, evening E, night N)
@@ -39,12 +38,8 @@ def optimize_dispensing(
     :param w_morning: penalty for morning shift usage
     :param w_evening: penalty for evening shift usage
     :param print_solution: whether to print out the results
-    :param solver: Optional solver instance to use. If None, uses the global solver instance.
     :return: dict with solution details or None if infeasible
     """
-
-    # Use provided solver or fall back to global instance
-    solver_to_use = solver if solver is not None else SOLVER_INSTANCE
 
     # ------------------------------------------------
     # Quick feasibility check: 9 batches max per day
@@ -135,7 +130,8 @@ def optimize_dispensing(
     # ------------------------------------------------
     # 6. SOLVE THE MODEL
     # ------------------------------------------------
-    solver_status = model.solve(solver_to_use)
+    result_status = model.solve(solver)
+    solver_status = pulp.LpStatus[model.status]
 
     if solver_status != 'Optimal':
         # Could be infeasible or unbounded for other reasons

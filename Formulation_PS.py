@@ -1,9 +1,8 @@
 import math
 import pulp
-from PS_GUI3 import SOLVER_INSTANCE  # Import the global solver instance
 from Dispensing_PS import optimize_dispensing
 from Granulation_PS import optimize_granulation
-from Tab_PS import optimize_tableting
+from  Tab_PS import optimize_tableting
 from Coating_PS import optimize_coating
 
 def optimize_osd_schedule(
@@ -29,8 +28,7 @@ def optimize_osd_schedule(
     use_bosch=True,
     use_glatt=True,
     # Whether to print the big combined summary:
-    print_combined: bool = True,
-    solver=None  # Add solver parameter with default None
+    print_combined: bool = True
 ):
     """
     Calls each of the 4 sub-process optimizers (dispensing, granulation, 
@@ -41,12 +39,7 @@ def optimize_osd_schedule(
       - Each sub-optimizer is still an *independent* LP model, so staff are 
         not shared across processes in this approach. The total staff is just 
         the sum of staff from each sub-model. 
-    :param solver: Optional solver instance to use. If None, uses the global solver instance.
-    :return: dict with solution details or None if infeasible
     """
-    
-    # Use provided solver or fall back to global instance
-    solver_to_use = solver if solver is not None else SOLVER_INSTANCE
     
     # 1) Run Dispensing
     disp_result = optimize_dispensing(
@@ -59,12 +52,12 @@ def optimize_osd_schedule(
         w_daysUsed=w_daysUsed,
         w_morning=w_morning,
         w_evening=w_evening,
-        print_solution=False,
-        solver=solver_to_use
+        print_solution=False  # We'll handle printing in the combined summary
     )
     
+    # If infeasible, disp_result will be None. We can short-circuit:
     if disp_result is None:
-        return None
+        return None  # or handle partial success
 
     # 2) Run Granulation
     gran_result = optimize_granulation(
@@ -77,8 +70,7 @@ def optimize_osd_schedule(
         w_night=w_night,
         w_weekend=w_weekend,
         w_daysUsed=w_daysUsed,
-        print_solution=False,
-        solver=solver_to_use
+        print_solution=False
     )
     if gran_result is None:
         return None
@@ -97,8 +89,7 @@ def optimize_osd_schedule(
         w_night=w_night,
         w_weekend=w_weekend,
         w_daysUsed=w_daysUsed,
-        print_solution=False,
-        solver=solver_to_use
+        print_solution=False
     )
     if tab_result is None:
         return None
@@ -116,8 +107,7 @@ def optimize_osd_schedule(
         w_night=w_night,
         w_weekend=w_weekend,
         w_daysUsed=w_daysUsed,
-        print_solution=False,
-        solver=solver_to_use
+        print_solution=False
     )
     if coat_result is None:
         return None
@@ -226,8 +216,7 @@ def optimize_osd_schedule_with_total(
     use_ima=True,
     use_bosch=True,
     use_glatt=True,
-    print_combined: bool = True,
-    solver=None  # Add solver parameter with default None
+    print_combined: bool = True
 ):
     """
     Optimizes the OSD schedule when given a total batch target.
@@ -237,12 +226,7 @@ def optimize_osd_schedule_with_total(
     Returns:
     - Dictionary containing schedule details and total days needed
     - None if infeasible
-    :param solver: Optional solver instance to use. If None, uses the global solver instance.
-    :return: dict with solution details or None if infeasible
     """
-    # Use provided solver or fall back to global instance
-    solver_to_use = solver if solver is not None else SOLVER_INSTANCE
-
     # First try with initial workdays estimate
     result = optimize_osd_schedule(
         disp_batches_req=total_batches,
@@ -262,8 +246,7 @@ def optimize_osd_schedule_with_total(
         use_ima=use_ima,
         use_bosch=use_bosch,
         use_glatt=use_glatt,
-        print_combined=False,
-        solver=solver_to_use
+        print_combined=False
     )
 
     # If infeasible, try increasing workdays until we find a feasible solution
@@ -288,8 +271,7 @@ def optimize_osd_schedule_with_total(
             use_ima=use_ima,
             use_bosch=use_bosch,
             use_glatt=use_glatt,
-            print_combined=False,
-            solver=solver_to_use
+            print_combined=False
         )
 
     if result is None:
@@ -349,9 +331,8 @@ def optimize_max_batches(
     use_bosch=True,
     use_glatt=True,
     max_iterations: int = 50,  # to prevent infinite loops
-    print_solution: bool = True,
-    solver=None  # Add solver parameter with default None
-):
+    print_solution: bool = True
+) -> dict:
     """
     Find the maximum number of batches that can be produced through all processes
     using binary search approach.
@@ -359,12 +340,7 @@ def optimize_max_batches(
     Returns:
     - Dictionary containing the maximum feasible batches and the detailed schedule
     - None if no feasible solution found
-    :param solver: Optional solver instance to use. If None, uses the global solver instance.
-    :return: dict with solution details or None if infeasible
     """
-    
-    # Use provided solver or fall back to global instance
-    solver_to_use = solver if solver is not None else SOLVER_INSTANCE
     
     # Initialize binary search bounds
     lower_bound = 1
@@ -396,8 +372,7 @@ def optimize_max_batches(
             use_ima=use_ima,
             use_bosch=use_bosch,
             use_glatt=use_glatt,
-            print_combined=False,
-            solver=solver_to_use
+            print_combined=False
         )
         
         if result is not None:

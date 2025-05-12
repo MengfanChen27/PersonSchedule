@@ -13,90 +13,96 @@ from datetime import datetime
 import pulp
 import os
 import sys
-import threading
-import queue
-import time
+from pulp import COIN_CMD
 
-# Global solver instance that will be initialized at startup
-SOLVER_INSTANCE = None
+def get_cbc_path():
+    """Get the path to the CBC solver executable."""
+    if getattr(sys, 'frozen', False):  # If running as a PyInstaller bundle
+        base_path = sys._MEIPASS
+    else:
+        base_path = os.path.dirname(os.path.abspath(__file__))
+    return os.path.join(base_path, 'solver', 'cbc.exe')
 
 def setup_pulp_solver():
-    """
-    Set up the PuLP solver with the correct path to the CBC executable.
-    Returns the solver instance if successful, None otherwise.
-    """
-    global SOLVER_INSTANCE  # Use the global solver instance
+    """Set up and configure the PuLP solver with CBC.
     
-    try:
-        # Get the directory of the current script
-        script_dir = os.path.dirname(os.path.abspath(__file__))
+    Returns:
+        The configured solver instance.
         
-        # Construct the path to the CBC executable
-        if sys.platform == "darwin":  # macOS
-            solver_path = os.path.join(script_dir, "cbc", "bin", "cbc")
-        elif sys.platform == "win32":  # Windows
-            solver_path = os.path.join(script_dir, "cbc", "bin", "cbc.exe")
-        else:  # Linux
-            solver_path = os.path.join(script_dir, "cbc", "bin", "cbc")
+    Raises:
+        FileNotFoundError: If CBC solver is not found.
+        Exception: If no working solver is available.
+    """
+    try:
+        # Get the path to CBC solver
+        cbc_path = get_cbc_path()
+        print(f"Looking for CBC solver at: {cbc_path}")
+        
+        if not os.path.exists(cbc_path):
+            raise FileNotFoundError(f"CBC solver not found at: {cbc_path}")
             
-        # Verify the solver exists
-        if not os.path.exists(solver_path):
-            print(f"Error: CBC solver not found at {solver_path}")
-            return None
+        # Verify solver is executable
+        if not os.access(cbc_path, os.X_OK):
+            print("Warning: CBC solver exists but may not be executable")
             
-        # Create solver instance with the correct path
-        SOLVER_INSTANCE = pulp.COIN_CMD(path=solver_path, msg=False)
+        # Configure PuLP to use the found CBC solver
+        solver = pulp.COIN_CMD(path=cbc_path, msg=False)  # Set msg=False to suppress solver output
         
         # Test the solver with a simple problem
-        test_model = pulp.LpProblem("test", pulp.LpMinimize)
+        test_prob = pulp.LpProblem("test", pulp.LpMinimize)
         x = pulp.LpVariable("x", 0, 1)
-        test_model += x
-        status = test_model.solve(SOLVER_INSTANCE)
+        test_prob += x
+        status = test_prob.solve(solver)
         
-        if status != pulp.LpStatusOptimal:
-            print("Error: CBC solver test failed")
-            return None
+        if status == pulp.LpStatusOptimal:
+            print("CBC solver test successful")
+            return solver
+        else:
+            print(f"CBC solver test failed with status: {pulp.LpStatus[status]}")
+            raise Exception("CBC solver test failed")
             
-        print("CBC solver initialized successfully")
-        return SOLVER_INSTANCE
-        
     except Exception as e:
         print(f"Error setting up CBC solver: {str(e)}")
-        return None
-
-def run_optimization_thread(
-    optimization_func,
-    args,
-    result_queue,
-    progress_queue,
-    solver=None  # Add solver parameter
-):
-    """
-    Run the optimization in a separate thread.
-    """
-    try:
-        # Use provided solver or fall back to global instance
-        solver_to_use = solver if solver is not None else SOLVER_INSTANCE
+        print("Attempting to use system solver as fallback...")
         
-        # Run the optimization
-        result = optimization_func(*args, solver=solver_to_use)
-        result_queue.put(result)
-    except Exception as e:
-        result_queue.put(e)
-    finally:
-        progress_queue.put("done")
+        try:
+            # Try to use any available solver
+            available_solvers = []
+            unavailable_solvers = set()
+            
+            for solver_name in pulp.listSolvers(onlyAvailable=False):
+                try:
+                    if pulp.getSolver(solver_name).available():
+                        available_solvers.append(solver_name)
+                    else:
+                        unavailable_solvers.add(solver_name)
+                except:
+                    unavailable_solvers.add(solver_name)
+            
+            print(f"Available solvers: {available_solvers}")
+            print(f"Unavailable solvers: {unavailable_solvers}")
+            
+            if available_solvers:
+                # Try to use the first available solver
+                solver = pulp.getSolver(available_solvers[0])
+                print(f"Using alternative solver: {available_solvers[0]}")
+                return solver
+            else:
+                raise Exception("No working solvers found")
+        except Exception as e2:
+            print(f"Failed to use system solver: {str(e2)}")
+            raise Exception("No working solver found") from e
+
+# Call this function at startup and store the solver instance
+solver = setup_pulp_solver()
+
+# Make the solver instance available to other modules
+__all__ = ['solver']
 
 class ModernProductionSchedulerGUI:
     def __init__(self, root):
         self.root = root
         self.root.title("Production Scheduler Optimizer")
-        
-        # Initialize solver at startup
-        if SOLVER_INSTANCE is None:
-            if not setup_pulp_solver():
-                messagebox.showerror("Error", "Failed to initialize CBC solver. Please check the installation.")
-                root.destroy()
-                return
         
         # Set minimum window size
         self.root.minsize(1000, 600)
